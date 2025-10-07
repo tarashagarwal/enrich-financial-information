@@ -73,23 +73,23 @@ if not all(col in data.columns for col in expected_columns):
 print("\n--- Preview of Input Data ---")
 print(data.head(), "\n")
 
+
+# Create temp file with headers
+with open(TEMP_FILE, "w", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=expected_columns)
+    writer.writeheader()
+
 for idx, row in data.iterrows():
     name   = str(row["Name"]).strip() if not pd.isna(row["Name"]) else ""
     symbol = str(row["Symbol"]).strip() if not pd.isna(row["Symbol"]) else ""
     price = row["Price"] if not pd.isna(row["Price"]) else ""
     shares_outstanding = row["# of Shares"] if not pd.isna(row["# of Shares"]) else ""
     market_value = row["Market Value"] if not pd.isna(row["Market Value"]) else ""
-
     # If both missing, log error and skip
-
-    if not name and not symbol:
-        error_msg = f"Row {idx+1} is missing key feature, cannot fetch data"
-        logger.error(error_msg)
-        print(error_msg)
-        continue
-        
     try:
         print(f"Processing row {idx+1}: Name='{name}', Symbol='{symbol}'")
+        # Add your API calls and data processing logic here
+        # Example: finnhub_client.company_profile2(symbol=symbol)
         #if only name is present
         if not symbol and name:
             lookup = finnhub_client.symbol_lookup(name)
@@ -99,15 +99,16 @@ for idx, row in data.iterrows():
             else:
                 print(f"No symbol found for '{name}'.")
                 continue
-
         elif not name and symbol:
             profile = finnhub_client.company_profile2(symbol=symbol)
             name = profile.get("name", "")
-
             if not name:
                 print(f"No name found for symbol '{symbol}'.")
                 continue
             print(f"Found name '{name}' for symbol '{symbol}'.")
+        else:
+            # Both name and symbol are present, verify the data
+            print(f"Both name and symbol present for '{name}' with symbol '{symbol}'.")
 
         profile = finnhub_client.company_profile2(symbol=symbol)
         quote = finnhub_client.quote(symbol)
@@ -137,8 +138,7 @@ for idx, row in data.iterrows():
         }
 
         # pdb.set_trace();
-
-        with open(TEMP_FILE, "w", newline="") as f:
+        with open(TEMP_FILE, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=expected_columns)
             writer.writerow(updated_row)
 
