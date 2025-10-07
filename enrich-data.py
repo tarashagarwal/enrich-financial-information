@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 import pandas as pd
 import logging
 from datetime import datetime
+import finnhub
 
 load_dotenv()
 
@@ -33,6 +34,14 @@ logging.basicConfig(
         logging.StreamHandler()  # Also print to console
     ]
 )
+
+# Load Finnhub API key, please paste API key in .env file at root
+
+API_KEY = os.getenv("FINNHUB_API_KEY")
+if not API_KEY:
+    raise ValueError("FINNHUB_API_KEY not found in .env file")
+finnhub_client = finnhub.Client(api_key=API_KEY)
+
 
 logger = logging.getLogger(__name__)
 
