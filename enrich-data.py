@@ -67,6 +67,7 @@ if not all(col in data.columns for col in expected_columns):
 print("\n--- Preview of Input Data ---")
 print(data.head(), "\n")
 
+updated_rows = []
 
 for idx, row in data.iterrows():
     name   = str(row["Name"]).strip() if not pd.isna(row["Name"]) else ""
@@ -84,8 +85,36 @@ for idx, row in data.iterrows():
         
     try:
         print(f"Processing row {idx+1}: Name='{name}', Symbol='{symbol}'")
-    # Add your API calls and data processing logic here
-    # Example: finnhub_client.company_profile2(symbol=symbol)
+        #if only name is present
+        if not symbol and name:
+            lookup = finnhub_client.symbol_lookup(name)
+            if lookup["count"] > 0:
+                symbol = lookup["result"][0]["symbol"]
+                print(f"Found symbol '{symbol}' for company '{name}'.")
+            else:
+                print(f"No symbol found for '{name}'.")
+                updated_rows.append(row)
+                continue
+
+        elif not name and symbol:
+            profile = finnhub_client.company_profile2(symbol=symbol)
+            name = profile.get("name", "")
+
+            if not name:
+                print(f"No name found for symbol '{symbol}'.")
+                updated_rows.append(row)
+                continue
+            print(f"Found name '{name}' for symbol '{symbol}'.")
+
+        else :
+            profile = finnhub_client.company_profile2(symbol=symbol)
+            name = profile.get("name", "")
+            if not name:
+                print(f"No name found for symbol '{symbol}'.")
+                updated_rows.append(row)
+                continue
+            print(f"Found name '{name}' for symbol '{symbol}'.")
+            
     except Exception as e:
         error_msg = f"Error processing row {idx+1} (Name='{name}', Symbol='{symbol}'): {str(e)}"
         logger.error(error_msg)
