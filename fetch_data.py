@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 import finnhub
 import csv
+import random
+import time
 
 # ----------------------------------------
 # Step 1: Fetch S&P 500 company list
@@ -54,3 +56,75 @@ with open(output_path, "w", newline="") as f:
         fieldnames=["Name", "Symbol", "Price", "# of Shares", "Market Value"]
     )
     writer.writeheader()
+
+# ----------------------------------------
+# Step 4: Fetch company data and build dataset
+# ----------------------------------------
+
+MAX_CALLS_PER_MIN = 60 #free veriosn of the API limit 60 calls per minute
+COOLDOWN = 70
+count = 0
+
+for _, row in companies_df.iterrows():
+    name = row["Name"]
+    symbol = row["Symbol"]
+    count += 1
+
+    try:
+        profile = finnhub_client.company_profile2(symbol=symbol)
+        quote = finnhub_client.quote(symbol)
+
+        price = quote.get("c", None)
+        shares_outstanding = profile.get("shareOutstanding", "")
+        market_cap = profile.get("marketCapitalization", "")
+
+        data_row = {
+            "Name": name,
+            "Symbol": symbol,
+            "Price": price,
+            "# of Shares": shares_outstanding,
+            "Market Value": market_cap
+        }
+
+        # Randomly drop some data, but keep at least one of Name or Symbol
+        drop_name = random.random() < 0.2
+        drop_symbol = random.random() < 0.2
+        if drop_name and drop_symbol:
+            if random.choice([True, False]):
+                drop_name = False
+            else:
+                drop_symbol = False
+        if drop_name:
+            data_row["Name"] = ""
+        if drop_symbol:
+            data_row["Symbol"] = ""
+
+        for key in ["Price", "# of Shares", "Market Value"]:
+            if random.random() < 0.3:
+                data_row[key] = ""
+
+        with open(output_path, "a", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["Name", "Symbol", "Price", "# of Shares", "Market Value"]
+            )
+            writer.writerow(data_row)
+
+        print("Processed:", symbol)
+        time.sleep(1.2)
+
+    except finnhub.FinnhubAPIException as e:
+        if "429" in str(e):
+            print("API limit reached. Cooling down for", COOLDOWN, "seconds.")
+            time.sleep(COOLDOWN)
+            continue
+        else:
+            print("Finnhub error for", symbol, ":", e)
+    except Exception as e:
+        print("General error for", symbol, ":", e)
+
+    if count % MAX_CALLS_PER_MIN == 0:
+        print("Processed", count, "companies. Cooling down for", COOLDOWN, "seconds.")
+        time.sleep(COOLDOWN)
+
+print("All data written to:", output_path)
