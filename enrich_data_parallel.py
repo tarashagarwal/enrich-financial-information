@@ -17,7 +17,7 @@ NUM_WORKERS              = int(os.getenv("NUM_WORKERS", "5"))            # threa
 WORKER_COOLDOWN_SECS     = int(os.getenv("WORKER_COOLDOWN_SECS", "60"))  # sleep after quota
 PER_WORKER_CALLS_PER_MIN = max(1, MAX_CALLS_PER_MIN // max(1, NUM_WORKERS))
 
-INPUT_FILE  = os.getenv("INPUT_FILE") or "output/data.csv"
+INPUT_FILE  = os.getenv("INPUT_FILE") or "input/data.csv"
 TEMP_FILE   = os.getenv("TEMP_FILE")  or "output/data_tmp.csv"
 ERROR_LOG   = os.getenv("ERROR_LOG")  or "output/error.log"
 DEV_LOG     = os.getenv("DEV_LOG")     or "output/dev.log"
