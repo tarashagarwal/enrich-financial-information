@@ -5,6 +5,8 @@ import finnhub
 import threading
 import time
 from queue import Queue, Empty
+import pandas as pd
+import csv
 # ---------------------------
 # Config (env-overridable)
 # ---------------------------
@@ -18,16 +20,40 @@ PER_WORKER_CALLS_PER_MIN = max(1, MAX_CALLS_PER_MIN // max(1, NUM_WORKERS))
 INPUT_FILE  = os.getenv("INPUT_FILE") or "output/data.csv"
 TEMP_FILE   = os.getenv("TEMP_FILE")  or "output/data_tmp.csv"
 ERROR_LOG   = os.getenv("ERROR_LOG")  or "output/error.log"
+DEV_LOG     = os.getenv("DEV_LOG")     or "output/dev.log"
 EXPECTED_COLUMNS = ["Name", "Symbol", "Price", "# of Shares", "Market Value"]
 
 os.makedirs("output", exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(ERROR_LOG), logging.StreamHandler()]
-)
+# Configure logging with separate handlers
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Clear any existing handlers
+logger.handlers.clear()
+
+# Create formatters
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+# File handler for INFO and above (dev.log)
+dev_handler = logging.FileHandler(DEV_LOG)
+dev_handler.setLevel(logging.INFO)
+dev_handler.setFormatter(formatter)
+
+# File handler for ERROR and above (error.log)
+error_handler = logging.FileHandler(ERROR_LOG)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(formatter)
+
+# Console handler for INFO and above
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+# Add handlers to logger
+logger.addHandler(dev_handler)
+logger.addHandler(error_handler)
+logger.addHandler(console_handler)
 
 API_KEY = os.getenv("FINNHUB_API_KEY")
 if not API_KEY:
@@ -209,5 +235,44 @@ def writer_fn(temp_file: str, header: list):
             w.writerow(item)
             write_q.task_done()
 
+def main():
+    # Validate input CSV
+    if not INPUT_FILE or not os.path.exists(INPUT_FILE):
+        raise FileNotFoundError(f"Input file not found at: {INPUT_FILE}")
 
-            
+    df = pd.read_csv(INPUT_FILE)
+    for col in EXPECTED_COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
+
+    logger.info(f"Using input file: {INPUT_FILE}")
+    logger.info(f"Global cap: {MAX_CALLS_PER_MIN}/min; Workers: {NUM_WORKERS}; Per-worker cap: {PER_WORKER_CALLS_PER_MIN}/min")
+
+    # Fill work queue
+    for i, row in df.iterrows():
+        todo_q.put((i + 1, row.to_dict()))
+
+    # Start writer
+    writer_th = threading.Thread(target=writer_fn, args=(TEMP_FILE, EXPECTED_COLUMNS), daemon=True)
+    writer_th.start()
+
+    # Start workers
+    workers = [threading.Thread(target=worker_fn, args=(wid,), daemon=True)
+               for wid in range(1, NUM_WORKERS + 1)]
+    for t in workers:
+        t.start()
+
+    # Wait for completion
+    todo_q.join()
+    write_q.put(None)  # stop writer
+    write_q.join()
+    writer_th.join(timeout=1)
+
+    # Stop limiter and replace file
+    rate_limiter.stop()
+    os.replace(TEMP_FILE, INPUT_FILE)
+    logger.info(f"Incremental update complete. Updated file saved at: {INPUT_FILE}")
+
+if __name__ == "__main__":
+    main()
+
