@@ -149,3 +149,32 @@ async def worker(worker_name, queue, session, semaphore):
 
     print(f"[{worker_name}] Sleeping {SLEEP_TIME}s after batch...")
     await asyncio.sleep(SLEEP_TIME)
+
+
+# ===========================
+# MAIN RUNNER
+# ===========================
+async def main():
+    queue = asyncio.Queue()
+    for idx, row in data.iterrows():
+        queue.put_nowait((idx, row))
+
+    # Semaphore to enforce global rate limit
+    semaphore = asyncio.Semaphore(MAX_CALLS_PER_MINUTE // NUM_WORKERS)
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            asyncio.create_task(worker(f"Worker-{i+1}", queue, session, semaphore))
+            for i in range(NUM_WORKERS)
+        ]
+        await asyncio.gather(*tasks)
+
+    os.replace(TEMP_FILE, INPUT_FILE)
+    print(f"\n✅ Async enrichment complete. Updated file saved at: {INPUT_FILE}")
+
+
+# ===========================
+# ENTRY POINT
+# ===========================
+if __name__ == "__main__":
+    asyncio.run(main())
