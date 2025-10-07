@@ -54,4 +54,31 @@ with open(TEMP_FILE, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=expected_columns)
     writer.writeheader()
 
+#We will use API here bcoz Library is blocking.
 BASE_URL = "https://finnhub.io/api/v1"
+
+
+# ===========================
+# ASYNC FINNHUB HELPERS
+# ===========================
+async def fetch_json(session, url, params):
+    async with session.get(url, params=params) as resp:
+        if resp.status != 200:
+            text = await resp.text()
+            raise Exception(f"API error {resp.status}: {text}")
+        return await resp.json()
+
+async def get_symbol_lookup(session, name):
+    url = f"{BASE_URL}/search"
+    params = {"q": name, "token": API_KEY}
+    return await fetch_json(session, url, params)
+
+async def get_company_profile(session, symbol):
+    url = f"{BASE_URL}/stock/profile2"
+    params = {"symbol": symbol, "token": API_KEY}
+    return await fetch_json(session, url, params)
+
+async def get_quote(session, symbol):
+    url = f"{BASE_URL}/quote"
+    params = {"symbol": symbol, "token": API_KEY}
+    return await fetch_json(session, url, params)
