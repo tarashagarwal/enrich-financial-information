@@ -147,3 +147,6 @@ for idx, row in data.iterrows():
         logger.error(error_msg)
         print(f"Error: {error_msg}")
     continue
+
+os.replace(TEMP_FILE, INPUT_FILE)
+print(f"\nIncremental update complete. Updated file saved at: {INPUT_FILE}")

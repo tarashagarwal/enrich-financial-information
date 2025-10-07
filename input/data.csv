@@ -1,7 +1,9 @@
 Name,Symbol,Price,# of Shares,Market Value
-Microsoft Corporatio,,326.12,5,1630.6
-Amazon.com Inc.,AMZN,130.25,8,1042.0
-Tesla Inc,TSLA,255.25,3,765.75
-Alphabet,GOOGL,139.14,6,834.84
-NVIDIA Corp,NVDA,470.11,4,1880.44
-Apple Inc,AAPL,189.89,10,1898.9
+Apple Inc.,AAPL,189.89,10,1898.90
+Microsoft Corporation,,326.12,5,1630.60
+Berkshire Hathaway Inc. Class B,,362.55,2,725.10
+Amazon.com Inc.,AMZN,130.25,8,1042.00
+Alphabet,,139.14,6,834.84
+Tesla Inc,,255.25,3,765.75
+NVIDIA Corporation,NVDA,470.11,4,
+Unknown Tech Co,,12.00,100,1200.00
