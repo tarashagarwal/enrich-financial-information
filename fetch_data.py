@@ -1,5 +1,9 @@
 import pandas as pd
 import requests
+import os
+from dotenv import load_dotenv
+import finnhub
+import csv
 
 # ----------------------------------------
 # Step 1: Fetch S&P 500 company list
@@ -26,3 +30,27 @@ companies_df.columns = ["Name", "Symbol"]
 
 print("Fetched", len(companies_df), "companies from Wikipedia")
 print(companies_df.head())
+
+# ----------------------------------------
+# Step 2: Load Finnhub API key
+# ----------------------------------------
+load_dotenv()
+API_KEY = os.getenv("FINNHUB_API_KEY")
+
+if not API_KEY:
+    raise ValueError("FINNHUB_API_KEY not found in .env file")
+
+finnhub_client = finnhub.Client(api_key=API_KEY)
+
+# ----------------------------------------
+# Step 3: Prepare output file
+# ----------------------------------------
+os.makedirs("output", exist_ok=True)
+output_path = "output/top100_company_market_value.csv"
+
+with open(output_path, "w", newline="") as f:
+    writer = csv.DictWriter(
+        f,
+        fieldnames=["Name", "Symbol", "Price", "# of Shares", "Market Value"]
+    )
+    writer.writeheader()
