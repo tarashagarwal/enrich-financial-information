@@ -11,3 +11,17 @@
 # Step 4: Save updated records.
 # Write enriched data to a temporary CSV file for review or further processing.
 # Log any failed rows separately for debugging.
+
+
+#############################################################################
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+INPUT_FILE = os.getenv("INPUT_FILE") or "input/data.csv"
+
+if not INPUT_FILE or not os.path.exists(INPUT_FILE):
+    raise FileNotFoundError(f"Input file not found at: {INPUT_FILE}")
+print(f"Using input file: {INPUT_FILE}")
