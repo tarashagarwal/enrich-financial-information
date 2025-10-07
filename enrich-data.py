@@ -21,6 +21,9 @@ import pandas as pd
 import logging
 from datetime import datetime
 import finnhub
+import csv
+import time
+import pdb
 
 load_dotenv()
 
@@ -34,6 +37,9 @@ logging.basicConfig(
         logging.StreamHandler()  # Also print to console
     ]
 )
+
+
+TEMP_FILE = os.getenv("TEMP_FILE") or "output/data_tmp.csv"
 
 # Load Finnhub API key, please paste API key in .env file at root
 
@@ -67,8 +73,6 @@ if not all(col in data.columns for col in expected_columns):
 print("\n--- Preview of Input Data ---")
 print(data.head(), "\n")
 
-updated_rows = []
-
 for idx, row in data.iterrows():
     name   = str(row["Name"]).strip() if not pd.isna(row["Name"]) else ""
     symbol = str(row["Symbol"]).strip() if not pd.isna(row["Symbol"]) else ""
@@ -83,9 +87,6 @@ for idx, row in data.iterrows():
         logger.error(error_msg)
         print(error_msg)
         continue
-
-    # Otherwise, continue with processing (you can add your Finnhub logic here)
-    print(f"Processing row {idx+1}: Name='{name}', Symbol='{symbol}'")
         
     try:
         print(f"Processing row {idx+1}: Name='{name}', Symbol='{symbol}'")
@@ -97,7 +98,6 @@ for idx, row in data.iterrows():
                 print(f"Found symbol '{symbol}' for company '{name}'.")
             else:
                 print(f"No symbol found for '{name}'.")
-                updated_rows.append(row)
                 continue
 
         elif not name and symbol:
@@ -106,18 +106,41 @@ for idx, row in data.iterrows():
 
             if not name:
                 print(f"No name found for symbol '{symbol}'.")
-                updated_rows.append(row)
                 continue
             print(f"Found name '{name}' for symbol '{symbol}'.")
 
-        else :
-            profile = finnhub_client.company_profile2(symbol=symbol)
-            name = profile.get("name", "")
-            if not name:
-                print(f"No name found for symbol '{symbol}'.")
-                updated_rows.append(row)
-                continue
-            print(f"Found name '{name}' for symbol '{symbol}'.")
+        profile = finnhub_client.company_profile2(symbol=symbol)
+        quote = finnhub_client.quote(symbol)
+
+        if not price or price == "":
+            price = quote.get("c", "")
+            print(f"Row {idx}: Updated price = {price}")
+
+        if not shares_outstanding or shares_outstanding == "":
+            shares_outstanding = profile.get("shareOutstanding", "")
+            print(f"Row {idx}: Updated shares outstanding = {shares_outstanding}")
+
+        if not market_value or market_value == "":
+            market_value = profile.get("marketCapitalization", "")
+            print(f"Row {idx}: Updated market value = {market_value}")
+
+        print(f"Row {idx}: ## Updated and written to file.\n")
+
+        time.sleep(1.0) #Free API is throttled , so need to wait a second, we can make 60 calls in a minute
+
+        updated_row = {
+            "Name": name,
+            "Symbol": symbol,
+            "Price": price,
+            "# of Shares": shares_outstanding,
+            "Market Value": market_value
+        }
+
+        # pdb.set_trace();
+
+        with open(TEMP_FILE, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=expected_columns)
+            writer.writerow(updated_row)
 
     except Exception as e:
         error_msg = f"Error processing row {idx+1} (Name='{name}', Symbol='{symbol}'): {str(e)}"
