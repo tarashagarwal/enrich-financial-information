@@ -81,3 +81,133 @@ def sdk_call(fn, *args, **kwargs):
 # ---------------------------
 todo_q = Queue()#rows in csv to be processed
 write_q = Queue()#processed rowsa waitng to be written
+
+
+def normalize_cell(v):
+    if v is None:
+        return ""
+    if isinstance(v, float) and pd.isna(v):
+        return ""
+    s = str(v).strip()
+    return "" if s.lower() == "nan" else s
+
+def enrich_row(row_idx_1based: int, row_dict: dict):
+    """Return (updated_row_dict, calls_used)."""
+    calls_used = 0
+    name   = normalize_cell(row_dict.get("Name"))
+    symbol = normalize_cell(row_dict.get("Symbol"))
+
+    price  = row_dict.get("Price")
+    shares = row_dict.get("# of Shares")
+    mval   = row_dict.get("Market Value")
+
+    price  = "" if (price  is None or (isinstance(price, float)  and pd.isna(price)))  else price
+    shares = "" if (shares is None or (isinstance(shares, float) and pd.isna(shares))) else shares
+    mval   = "" if (mval   is None or (isinstance(mval, float)   and pd.isna(mval)))   else mval
+
+    if not name and not symbol:
+        logger.error(f"Row {row_idx_1based} is missing key feature, cannot fetch data")
+        return {
+            "Name": row_dict.get("Name", ""), "Symbol": row_dict.get("Symbol", ""),
+            "Price": row_dict.get("Price", ""), "# of Shares": row_dict.get("# of Shares", ""),
+            "Market Value": row_dict.get("Market Value", "")
+        }, calls_used
+
+    # If Symbol missing but Name present: lookup symbol
+    if not symbol and name:
+        try:
+            lookup = sdk_call(finnhub_client.symbol_lookup, name)
+            calls_used += 1
+            if lookup and lookup.get("count", 0) > 0:
+                symbol = normalize_cell(lookup["result"][0].get("symbol"))
+                logger.info(f"Row {row_idx_1based}: Found symbol '{symbol}' for '{name}'.")
+            else:
+                logger.warning(f"Row {row_idx_1based}: No symbol found for '{name}'. Leaving row as-is.")
+                return {
+                    "Name": name, "Symbol": "", "Price": price,
+                    "# of Shares": shares, "Market Value": mval
+                }, calls_used
+        except Exception as e:
+            logger.error(f"Row {row_idx_1based}: symbol_lookup error for name='{name}': {e}")
+            return {
+                "Name": name, "Symbol": "", "Price": price,
+                "# of Shares": shares, "Market Value": mval
+            }, calls_used
+
+    # If Name missing but Symbol present: get profile to fill name
+    profile = None
+    if not name and symbol:
+        try:
+            profile = sdk_call(finnhub_client.company_profile2, symbol=symbol)
+            calls_used += 1
+            name = normalize_cell(profile.get("name", "")) or name
+            if name:
+                logger.info(f"Row {row_idx_1based}: Found name '{name}' for symbol '{symbol}'.")
+            else:
+                logger.warning(f"Row {row_idx_1based}: No name found for symbol '{symbol}'. Leaving row as-is.")
+                return {
+                    "Name": "", "Symbol": symbol, "Price": price,
+                    "# of Shares": shares, "Market Value": mval
+                }, calls_used
+        except Exception as e:
+            logger.error(f"Row {row_idx_1based}: company_profile2 error for '{symbol}': {e}")
+            return {
+                "Name": "", "Symbol": symbol, "Price": price,
+                "# of Shares": shares, "Market Value": mval
+            }, calls_used
+
+    # Fetch profile + quote to fill missing values
+    try:
+        if profile is None:
+            profile = sdk_call(finnhub_client.company_profile2, symbol=symbol)
+            calls_used += 1
+        quote = sdk_call(finnhub_client.quote, symbol)
+        calls_used += 1
+
+        if price == "":
+            price = quote.get("c", "")
+        if shares == "":
+            shares = profile.get("shareOutstanding", "")
+        if mval == "":
+            mval = profile.get("marketCapitalization", "")
+    except Exception as e:
+        logger.error(f"Row {row_idx_1based}: fetch profile/quote error for '{symbol}': {e}")
+
+    return {
+        "Name": name, "Symbol": symbol, "Price": price,
+        "# of Shares": shares, "Market Value": mval
+    }, calls_used
+
+def worker_fn(worker_id: int):
+    used_this_minute = 0
+    while True:
+        try:
+            row_idx, row_dict = todo_q.get(timeout=0.2)
+        except Empty:
+            return
+        updated, calls_used = enrich_row(row_idx, row_dict)
+        write_q.put(updated)
+        used_this_minute += calls_used
+
+        # Per-worker quota enforcement
+        if used_this_minute >= PER_WORKER_CALLS_PER_MIN:
+            logger.info(f"Worker {worker_id}: used {used_this_minute} calls. Cooling down {WORKER_COOLDOWN_SECS}s.")
+            time.sleep(WORKER_COOLDOWN_SECS)
+            used_this_minute = 0
+
+        todo_q.task_done()
+
+def writer_fn(temp_file: str, header: list):
+    with open(temp_file, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=header)
+        w.writeheader()
+        while True:
+            item = write_q.get()
+            if item is None:  # sentinel
+                write_q.task_done()
+                break
+            w.writerow(item)
+            write_q.task_done()
+
+
+            
