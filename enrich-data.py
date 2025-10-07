@@ -17,6 +17,7 @@
 
 import os
 from dotenv import load_dotenv
+import pandas as pd
 
 load_dotenv()
 
@@ -25,3 +26,15 @@ INPUT_FILE = os.getenv("INPUT_FILE") or "input/data.csv"
 if not INPUT_FILE or not os.path.exists(INPUT_FILE):
     raise FileNotFoundError(f"Input file not found at: {INPUT_FILE}")
 print(f"Using input file: {INPUT_FILE}")
+
+
+expected_columns = ["Name", "Symbol", "Price", "# of Shares", "Market Value"]
+# Load the CSV
+data = pd.read_csv(INPUT_FILE)
+# Validate column names
+if not all(col in data.columns for col in expected_columns):
+    raise ValueError(f"Input file must contain columns: {expected_columns}")
+
+print("\n--- Preview of Input Data ---")
+print(data.head(), "\n")
+
