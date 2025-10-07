@@ -72,6 +72,10 @@ updated_rows = []
 for idx, row in data.iterrows():
     name   = str(row["Name"]).strip() if not pd.isna(row["Name"]) else ""
     symbol = str(row["Symbol"]).strip() if not pd.isna(row["Symbol"]) else ""
+    price = row["Price"] if not pd.isna(row["Price"]) else ""
+    shares_outstanding = row["# of Shares"] if not pd.isna(row["# of Shares"]) else ""
+    market_value = row["Market Value"] if not pd.isna(row["Market Value"]) else ""
+
     # If both missing, log error and skip
 
     if not name and not symbol:
@@ -114,7 +118,7 @@ for idx, row in data.iterrows():
                 updated_rows.append(row)
                 continue
             print(f"Found name '{name}' for symbol '{symbol}'.")
-            
+
     except Exception as e:
         error_msg = f"Error processing row {idx+1} (Name='{name}', Symbol='{symbol}'): {str(e)}"
         logger.error(error_msg)
