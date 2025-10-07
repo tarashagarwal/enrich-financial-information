@@ -82,3 +82,70 @@ async def get_quote(session, symbol):
     url = f"{BASE_URL}/quote"
     params = {"symbol": symbol, "token": API_KEY}
     return await fetch_json(session, url, params)
+
+# ===========================
+# ASYNC WORKER
+# ===========================
+async def worker(worker_name, queue, session, semaphore):
+    while True:
+        try:
+            idx, row = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+
+        async with semaphore:  # rate-limited block
+            try:
+                name_val = str(row["Name"]).strip() if not pd.isna(row["Name"]) else ""
+                symbol = str(row["Symbol"]).strip() if not pd.isna(row["Symbol"]) else ""
+
+                if not name_val and not symbol:
+                    logger.error(f"[{worker_name}] Row {idx+1}: Missing key fields.")
+                    continue
+
+                print(f"[{worker_name}] Processing row {idx+1}...")
+
+                # Lookup missing symbol or name
+                if not symbol and name_val:
+                    lookup = await get_symbol_lookup(session, name_val)
+                    if lookup.get("count", 0) > 0:
+                        symbol = lookup["result"][0]["symbol"]
+                        print(f"[{worker_name}] Found symbol '{symbol}' for company '{name_val}'.")
+                    else:
+                        print(f"[{worker_name}] No symbol found for '{name_val}'.")
+                        continue
+                elif not name_val and symbol:
+                    profile = await get_company_profile(session, symbol)
+                    name_val = profile.get("name", "")
+                    if not name_val:
+                        print(f"[{worker_name}] No name found for symbol '{symbol}'.")
+                        continue
+
+                # Fetch main data
+                profile = await get_company_profile(session, symbol)
+                quote = await get_quote(session, symbol)
+
+                price = row["Price"] if not pd.isna(row["Price"]) else quote.get("c", "")
+                shares = row["# of Shares"] if not pd.isna(row["# of Shares"]) else profile.get("shareOutstanding", "")
+                market_value = row["Market Value"] if not pd.isna(row["Market Value"]) else profile.get("marketCapitalization", "")
+
+                updated_row = {
+                    "Name": name_val,
+                    "Symbol": symbol,
+                    "Price": price,
+                    "# of Shares": shares,
+                    "Market Value": market_value,
+                }
+
+                async with aiofiles.open(TEMP_FILE, "a", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=expected_columns)
+                    await asyncio.get_event_loop().run_in_executor(None, writer.writerow, updated_row)
+
+                print(f"[{worker_name}] ✅ Row {idx+1} done.")
+            except Exception as e:
+                logger.error(f"[{worker_name}] Row {idx+1} error: {e}")
+            finally:
+                # ensure pacing between calls
+                await asyncio.sleep(60 / MAX_CALLS_PER_MINUTE)
+
+    print(f"[{worker_name}] Sleeping {SLEEP_TIME}s after batch...")
+    await asyncio.sleep(SLEEP_TIME)
