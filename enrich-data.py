@@ -38,3 +38,15 @@ if not all(col in data.columns for col in expected_columns):
 print("\n--- Preview of Input Data ---")
 print(data.head(), "\n")
 
+
+for idx, row in data.iterrows():
+    name   = str(row["Name"]).strip() if not pd.isna(row["Name"]) else ""
+    symbol = str(row["Symbol"]).strip() if not pd.isna(row["Symbol"]) else ""
+    # If both missing, print error and skip
+
+    if not name and not symbol:
+        print(f"Row {idx+1} is missing key feature, cannot fetch data")
+        continue
+
+    # Otherwise, continue with processing (you can add your Finnhub logic here)
+    print(f"Processing row {idx+1}: Name='{name}', Symbol='{symbol}'")
